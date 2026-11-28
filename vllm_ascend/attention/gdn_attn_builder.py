@@ -987,13 +987,15 @@ class AscendGDNAttentionMetadataBuilder(GDNAttentionMetadataBuilder):
         else:
             num_reqs = num_decode_draft_tokens_cpu.numel()
             spec_sequence_masks_cpu = self.spec_sequence_masks_cpu[:num_reqs]
-            # Zero-draft adaptive rows still need the previous accepted state.
+            # Explicit zero-draft rows were trimmed by grammar and still need
+            # the previous accepted recurrent state.
             torch.ge(num_decode_draft_tokens_cpu, 0, out=spec_sequence_masks_cpu)
             adaptive = bool(
                 self.speculative_config and getattr(self.speculative_config, "enable_adaptive_verification", False)
             )
-            if not adaptive and not torch.any(num_decode_draft_tokens_cpu > 0).item():
-                # Static graphs retain the native no-draft decode route.
+            if not adaptive and not runtime_batch and not torch.any(num_decode_draft_tokens_cpu > 0).item():
+                # Static graph capture uses one-token dummy rows without
+                # runtime request metadata; retain its native decode route.
                 spec_sequence_masks_cpu.zero_()
             num_spec_decodes = int(spec_sequence_masks_cpu.sum())
             if num_spec_decodes == 0:

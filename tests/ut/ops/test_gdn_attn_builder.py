@@ -1574,6 +1574,46 @@ def test_spec_rows_preserve_previous_accepted_state(builder_cls, graph_mode, cac
 
 
 @pytest.mark.parametrize("builder_cls", [AscendGDNAttentionMetadataBuilder, AscendGDNHostMetadataBuilder])
+@pytest.mark.parametrize("graph_mode", [CUDAGraphMode.NONE, CUDAGraphMode.FULL_DECODE_ONLY])
+@pytest.mark.parametrize(
+    "query_lens,draft_counts,expected_mask",
+    [
+        ([1, 4, 0], [0, 3, -1], [True, True, False]),
+        ([1, 1], [0, 0], [True, True]),
+    ],
+)
+def test_static_trimmed_drafts_preserve_accepted_state(
+    builder_cls, graph_mode, query_lens, draft_counts, expected_mask
+):
+    num_reqs = len(query_lens)
+    builder = _make_builder(
+        device=torch.device("cpu"),
+        num_heads=32,
+        num_speculative_tokens=3,
+        num_speculative_blocks=3,
+        cudagraph_mode=graph_mode,
+        builder_cls=builder_cls,
+    )
+    common = create_common_attn_metadata(BatchSpec([64] * num_reqs, query_lens), 16, torch.device("cpu"))
+    common.block_table_tensor = torch.arange(num_reqs * 8, dtype=torch.int32).view(num_reqs, 8) + 10
+    accepted = torch.tensor([4, 2, 1][:num_reqs], dtype=torch.int32)
+
+    metadata = builder.build(
+        0,
+        common,
+        num_accepted_tokens=accepted,
+        num_decode_draft_tokens_cpu=torch.tensor(draft_counts, dtype=torch.int32),
+        num_actual_reqs=num_reqs,
+    )
+
+    assert metadata.num_spec_decodes == sum(expected_mask)
+    assert metadata.spec_sequence_masks[:num_reqs].tolist() == expected_mask
+    assert metadata.num_accepted_tokens[: metadata.num_spec_decodes].tolist() == accepted[
+        torch.tensor(expected_mask)
+    ].tolist()
+
+
+@pytest.mark.parametrize("builder_cls", [AscendGDNAttentionMetadataBuilder, AscendGDNHostMetadataBuilder])
 @pytest.mark.parametrize(
     "draft_count,host_lens,device_queries,expected_queries,expected_lens",
     [

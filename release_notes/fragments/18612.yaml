@@ -1,0 +1,8 @@
+pr: 18612
+entries:
+  - category: bugfix
+    text: >-
+      Fixed malformed structured output and repetitive generation for GDN models when
+      grammar validation trims every speculative draft token from a request.
+    model: qwen3.5
+    hardware: [A3]

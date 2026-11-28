@@ -528,7 +528,7 @@ def test_prepare_attn_classifies_one_token_prompt_tails(
     )
     metadata = mock_build_attn_metadata.call_args.kwargs["model_specific_attn_metadata"]
     assert metadata.is_prefilling.tolist() == [False, True, False]
-    expected_drafts = num_draft_tokens if adaptive or num_draft_tokens else -1
+    expected_drafts = -1 if drafts_missing and not adaptive else num_draft_tokens
     assert metadata.num_decode_draft_tokens_cpu.tolist() == [expected_drafts, -1, expected_drafts]
     np.testing.assert_array_equal(input_batch.is_prefilling_np, [True, True, False])
 

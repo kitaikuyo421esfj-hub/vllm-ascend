@@ -512,6 +512,7 @@ class AscendMambaHybridModelState(MambaHybridModelState, AscendModelState):
 
             num_decode_draft_tokens_np = np.full(num_reqs, -1, dtype=np.int32)
             num_draft_tokens_per_req = input_batch.num_draft_tokens_per_req
+            has_draft_metadata = num_draft_tokens_per_req is not None
             if num_draft_tokens_per_req is None:
                 num_draft_tokens_per_req = np.zeros(input_batch.num_reqs, dtype=np.int32)
             # Match upstream request-state classification. Adaptive verification
@@ -524,10 +525,10 @@ class AscendMambaHybridModelState(MambaHybridModelState, AscendModelState):
             )
             spec_config = getattr(self.vllm_config, "speculative_config", None)
             if not (spec_config and getattr(spec_config, "enable_adaptive_verification", False)):
-                # Static graphs retain the native recurrent operator and its
-                # original no-draft decode route. Adaptive graphs use vLLM's
-                # strided operator even for one-token capture/replay rows.
-                spec_decode_mask &= (num_draft_tokens_per_req[: input_batch.num_reqs] > 0) & (
+                # An explicit zero identifies a grammar-trimmed speculative
+                # row whose accepted recurrent history must still be retained.
+                # Missing draft metadata remains a natural non-spec decode.
+                spec_decode_mask &= has_draft_metadata & (
                     scheduled_tokens == num_draft_tokens_per_req[: input_batch.num_reqs] + 1
                 )
             num_decode_draft_tokens_np[: input_batch.num_reqs] = np.where(
